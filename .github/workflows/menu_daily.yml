@@ -1,8 +1,8 @@
-name: Gambrinus menu daily 12:00
+name: Gambrinus menu daily 16:00
 
 on:
   schedule:
-    # Ogni ora: lo script decide se è mezzogiorno in Europe/Rome
+    # Esegue ogni ora (minuto 0). Lo script invia solo alle 16:00 Europe/Rome.
     - cron: "0 * * * *"
   workflow_dispatch:
 
@@ -10,9 +10,11 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -21,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Send menu (only at 12:00 Rome)
+      - name: Run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
