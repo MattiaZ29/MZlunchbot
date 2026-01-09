@@ -1,15 +1,20 @@
-import os, re, io
+import os
+import re
+import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import requests
 import pdfplumber
 
+# PDF del menù del giorno
 PDF_URL = "https://menu.officinagambrinus.com/menu/download/2"
 
-TOKEN = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+# Secrets GitHub Actions
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
+# File stato: evita doppio invio nello stesso giorno
 STATE_DAY_FILE = "state_last_sent_day.txt"
 
 
@@ -50,25 +55,43 @@ def clean_text(s: str) -> str:
 
 
 def pick_sections(text: str) -> str:
-    titles = ["PRIMI PIATTI", "SECONDI PIATTI DEL GIORNO", "CONTORNI DEL GIORNO", "DOLCI"]
+    """
+    Prova a prendere sezioni tipiche dal menù.
+    Se non trova i titoli, manda comunque tutto il testo pulito.
+    """
+    titles = [
+        "PRIMI PIATTI",
+        "SECONDI PIATTI DEL GIORNO",
+        "CONTORNI DEL GIORNO",
+        "DOLCI",
+    ]
+
     blocks = []
     for i, title in enumerate(titles):
         next_title = titles[i + 1] if i + 1 < len(titles) else None
+
         if next_title:
-            m = re.search(rf"{re.escape(title)}\s*(.*?)(?=\n{re.escape(next_title)}\b)", text, flags=re.S)
+            m = re.search(
+                rf"{re.escape(title)}\s*(.*?)(?=\n{re.escape(next_title)}\b)",
+                text,
+                flags=re.S,
+            )
         else:
             m = re.search(rf"{re.escape(title)}\s*(.*)$", text, flags=re.S)
+
         if m:
-            blocks.append(f"*{title}*\n{m.group(1).strip()}")
+            body = m.group(1).strip()
+            blocks.append(f"*{title}*\n{body}")
+
     return "\n\n".join(blocks) if blocks else text
 
 
 def telegram_send(message: str) -> None:
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     r = requests.post(
         url,
         json={
-            "chat_id": CHAT_ID,
+            "chat_id": TELEGRAM_CHAT_ID,
             "text": message,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
@@ -78,24 +101,25 @@ def telegram_send(message: str) -> None:
     r.raise_for_status()
 
 
-def main():
-    # Ora Italia (gestisce anche ora legale/solare)
+def main() -> None:
+    # Ora Italia (gestisce ora legale/solare)
     now = datetime.now(ZoneInfo("Europe/Rome"))
 
-    # Invia solo alle 12:00
-   # if not (now.hour == 15 and now.minute == 8):
-    #    print("Non è l'ora giusta:", now.isoformat())
-     #   return
+    # Invia SOLO alle 16:00
+    if not (now.hour == 16 and now.minute == 0):
+        print("Non è l'ora giusta:", now.isoformat())
+        return
 
     today = now.strftime("%Y-%m-%d")
     if read_file(STATE_DAY_FILE) == today:
         print("Già inviato oggi.")
         return
 
-    pdf = download_pdf(PDF_URL)
-    text = pick_sections(clean_text(extract_text_from_pdf(pdf)))
+    pdf_bytes = download_pdf(PDF_URL)
+    raw_text = extract_text_from_pdf(pdf_bytes)
+    text = pick_sections(clean_text(raw_text))
 
-    # Limite sicurezza Telegram (evita messaggi troppo lunghi)
+    # Safety: Telegram ha limite messaggio; tagliamo se troppo lungo
     if len(text) > 3800:
         text = text[:3800] + "\n\n(…continua)"
 
