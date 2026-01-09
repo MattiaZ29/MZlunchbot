@@ -1,8 +1,9 @@
-name: Telegram menu bot
+name: Gambrinus menu daily 12:00
 
 on:
   schedule:
-    - cron: "* * * * *"   # ogni minuto
+    # Ogni ora: lo script decide se è mezzogiorno in Europe/Rome
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,15 +21,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run bot
+      - name: Send menu (only at 12:00 Rome)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        run: python send_menu.py
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_menu_daily.py
 
       - name: Save state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add last_update_id.txt || true
-          git commit -m "Update telegram offset" || exit 0
+          git add state_last_sent_day.txt || true
+          git commit -m "Update state" || exit 0
           git push
