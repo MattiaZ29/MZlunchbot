@@ -83,9 +83,9 @@ def main():
     now = datetime.now(ZoneInfo("Europe/Rome"))
 
     # Invia solo alle 12:00
-    if not (now.hour == 15 and now.minute == 8):
-        print("Non è l'ora giusta:", now.isoformat())
-        return
+   # if not (now.hour == 15 and now.minute == 8):
+    #    print("Non è l'ora giusta:", now.isoformat())
+     #   return
 
     today = now.strftime("%Y-%m-%d")
     if read_file(STATE_DAY_FILE) == today:
