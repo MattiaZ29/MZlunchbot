@@ -1,67 +1,85 @@
-import os, re, io
-from datetime import datetime
+import os, re, io, json
 import requests
 import pdfplumber
-
-PDF_URL = "https://menu.officinagambrinus.com/menu/download/2"
+from datetime import datetime
 
 TOKEN = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+PDF_URL = "https://menu.officinagambrinus.com/menu/download/2"
 
-def download_pdf(url: str) -> bytes:
-    r = requests.get(url, timeout=30)
+STATE_FILE = "last_update_id.txt"
+
+
+def telegram_get_updates(offset=None):
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    params = {"timeout": 0}
+    if offset:
+        params["offset"] = offset
+    return requests.get(url, params=params, timeout=30).json()
+
+
+def telegram_send(chat_id, text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True
+    }, timeout=30)
+
+
+def read_state():
+    try:
+        return int(open(STATE_FILE).read().strip())
+    except:
+        return None
+
+
+def write_state(update_id):
+    with open(STATE_FILE, "w") as f:
+        f.write(str(update_id))
+
+
+def download_menu():
+    r = requests.get(PDF_URL, timeout=30)
     r.raise_for_status()
-    return r.content
+    pdf = r.content
 
-def extract_text(pdf_bytes: bytes) -> str:
     parts = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
+    with pdfplumber.open(io.BytesIO(pdf)) as pdf_file:
+        for page in pdf_file.pages:
             t = page.extract_text() or ""
             if t.strip():
                 parts.append(t)
-    return "\n".join(parts)
 
-def clean_text(s: str) -> str:
-    s = s.replace("\r", "\n")
-    s = re.sub(r"[ \t]+", " ", s)
-    s = re.sub(r"\n{3,}", "\n\n", s)
-    return s.strip()
+    text = "\n".join(parts)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
-def pick_sections(text: str) -> str:
-    titles = ["PRIMI PIATTI", "SECONDI PIATTI DEL GIORNO", "CONTORNI DEL GIORNO", "DOLCI"]
-    blocks = []
-    for i, title in enumerate(titles):
-        next_title = titles[i + 1] if i + 1 < len(titles) else None
-        if next_title:
-            m = re.search(rf"{re.escape(title)}\s*(.*?)(?=\n{re.escape(next_title)}\b)", text, flags=re.S)
-        else:
-            m = re.search(rf"{re.escape(title)}\s*(.*)$", text, flags=re.S)
-        if m:
-            blocks.append(f"{title}\n{m.group(1).strip()}")
-    return "\n\n".join(blocks) if blocks else text
-
-def send_telegram(message: str) -> None:
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    r = requests.post(url, json={
-        "chat_id": CHAT_ID,
-        "text": message,
-        "disable_web_page_preview": True
-    }, timeout=30)
-    r.raise_for_status()
 
 def main():
-    pdf = download_pdf(PDF_URL)
-    text = pick_sections(clean_text(extract_text(pdf)))
+    last_update = read_state()
+    updates = telegram_get_updates(last_update + 1 if last_update else None)
 
-    # Telegram ha un limite messaggio: se è lunghissimo, tagliamo (safe)
-    max_len = 3800
-    if len(text) > max_len:
-        text = text[:max_len] + "\n\n(…continua)"
+    if not updates.get("ok"):
+        return
 
-    today = datetime.now().strftime("%d/%m/%Y")
-    msg = f"🍽️ Menù del giorno — {today}\n\n{text}"
-    send_telegram(msg)
+    for u in updates["result"]:
+        update_id = u["update_id"]
+        msg = u.get("message", {})
+        text = msg.get("text", "").strip().lower()
+        chat_id = msg.get("chat", {}).get("id")
+
+        if not chat_id:
+            write_state(update_id)
+            continue
+
+        if text == "menu":
+            menu = download_menu()
+            today = datetime.now().strftime("%d/%m/%Y")
+            telegram_send(chat_id, f"🍽️ Menù del giorno — {today}\n\n{menu}")
+
+        write_state(update_id)
+
 
 if __name__ == "__main__":
     main()
