@@ -1,7 +1,9 @@
-name: Gambrinus menu (manual)
+name: Gambrinus menu (on demand)
 
 on:
-  workflow_dispatch:
+  repository_dispatch:
+    types: [telegram_menu]
+  workflow_dispatch: {}
 
 jobs:
   send:
@@ -21,5 +23,6 @@ jobs:
       - name: Send menu to Telegram
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # chat_id arriva dal webhook, quindi non è più “fisso”
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.chat_id }}
         run: python send_menu.py
