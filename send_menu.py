@@ -88,9 +88,15 @@ def telegram_send(message: str) -> None:
 def main():
     # Invia solo alle 12:00 ora di Roma
     now = datetime.now(ZoneInfo("Europe/Rome"))
+   # if not (now.hour == 12 and now.minute == 0):
+    #    print("Non è l'ora giusta:", now)
+     #   return
+
+    # TEST: invia sempre
     if not (now.hour == 12 and now.minute == 0):
         print("Non è l'ora giusta:", now)
         return
+
 
     today = now.strftime("%Y-%m-%d")
     if read_file(STATE_DAY) == today:
